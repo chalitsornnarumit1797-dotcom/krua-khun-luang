@@ -1,16 +1,416 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="th">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ครัวคุณหลวง</title>
+    <title>ครัวคุณหลวง - แซนวิช & เครื่องดื่ม</title>
+    <!-- โหลดไลบรารีที่จำเป็น -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Kanit', sans-serif; }
+        .animate-pop { animation: pop 0.3s ease-out; }
+        @keyframes pop {
+            0% { transform: scale(0.95); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .category-tab { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    </style>
 </head>
-<body>
+<body class="bg-gray-50 text-gray-800">
     <div id="root"></div>
-    <script type="text/babel" src="./App.js"></script>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- ระบบไอคอน SVG ---
+        const Icon = ({ name, size = 24, className = "" }) => {
+            const icons = {
+                cart: (
+                    <>
+                        <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>
+                        <line x1="3" x2="21" y1="6" y2="6"/>
+                        <path d="M16 10a4 4 0 0 1-8 0"/>
+                    </>
+                ),
+                plus: (
+                    <>
+                        <line x1="12" x2="12" y1="5" y2="19"/>
+                        <line x1="5" x2="19" y1="12" y2="12"/>
+                    </>
+                ),
+                minus: (
+                    <line x1="5" x2="19" y1="12" y2="12"/>
+                ),
+                chevronRight: (
+                    <path d="m9 18 6-6-6-6"/>
+                ),
+                chevronLeft: (
+                    <path d="m15 18-6-6 6-6"/>
+                ),
+                x: (
+                    <>
+                        <path d="M18 6 6 18"/>
+                        <path d="m6 6 12 12"/>
+                    </>
+                ),
+                check: (
+                    <polyline points="20 6 9 17 4 12"/>
+                ),
+                clock: (
+                    <>
+                        <circle cx="12" cy="12" r="10"/>
+                        <polyline points="12 6 12 12 16 14"/>
+                    </>
+                ),
+                home: (
+                    <>
+                        <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                        <polyline points="9 22 9 12 15 12 15 22"/>
+                    </>
+                ),
+                coffee: (
+                    <>
+                        <path d="M17 8h1a4 4 0 1 1 0 8h-1"/>
+                        <path d="M3 8h14v9a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4Z"/>
+                        <line x1="6" x2="6" y1="2" y2="4"/>
+                        <line x1="10" x2="10" y1="2" y2="4"/>
+                        <line x1="14" x2="14" y1="2" y2="4"/>
+                    </>
+                ),
+                utensils: (
+                    <>
+                        <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/>
+                        <path d="M7 2v20"/>
+                        <path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/>
+                    </>
+                )
+            };
+            return (
+                <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                    {icons[name] || <circle cx="12" cy="12" r="10" />}
+                </svg>
+            );
+        };
+
+        const LIFF_ID = "YOUR_LIFF_ID_HERE"; 
+
+        const App = () => {
+            const [view, setView] = useState('menu');
+            const [activeCategory, setActiveCategory] = useState('sandwich');
+            const [selectedItem, setSelectedItem] = useState(null);
+            const [cart, setCart] = useState([]);
+            const [loading, setLoading] = useState(false);
+            const [customerInfo, setCustomerInfo] = useState({ name: '', roomNumber: '', note: '' });
+
+            useEffect(() => {
+                const initLiff = async () => {
+                    try {
+                        await liff.init({ liffId: LIFF_ID });
+                        if (liff.isLoggedIn()) {
+                            const profile = await liff.getProfile();
+                            setCustomerInfo(prev => ({ ...prev, name: profile.displayName }));
+                        }
+                    } catch (error) {
+                        console.error("LIFF failed", error);
+                    }
+                };
+                initLiff();
+            }, []);
+
+            const extraOptions = [
+                { id: 'crab', label: 'ปูอัด+ไข่กุ้ง', price: 5 },
+                { id: 'pork', label: 'หมูหยอง', price: 5 },
+                { id: 'sausage', label: 'ไส้กรอก', price: 5 },
+                { id: 'bologna', label: 'โบโลน่า', price: 5 },
+                { id: 'corn', label: 'คอร์นสลัด', price: 5 },
+            ];
+
+            const [itemOptions, setItemOptions] = useState({ size: 'XL', selectedExtras: [] });
+
+            const menus = {
+                sandwich: [
+                    { id: 1, name: 'ไส้กรอก+โบโลน่า+ไข่ดาว', description: 'เครื่องแน่นจัดเต็ม เลือกขนาดและเพิ่มไส้พิเศษได้ตามใจชอบ', image: 'https://human-white-pdserlloro.edgeone.app/20.jpg' },
+                    { id: 2, name: 'ไก่หยองพริกเผา+ไข่ดาว', description: 'ไก่หยองเกรดเอคลุกน้ำพริกเผารสเข้มข้น ท็อปด้วยไข่ดาวสดใหม่', image: 'https://human-white-pdserlloro.edgeone.app/21.jpg' },
+                    { id: 3, name: 'ปูอัด+ไข่กุ้ง+โบโลน่า', description: 'ปูอัดฉีกผสมไข่กุ้งเคี้ยวกรุบ และโบโลน่าแผ่นหนานุ่ม', image: 'https://human-white-pdserlloro.edgeone.app/22.jpg' },
+                    { id: 4, name: 'คอร์นสลัด+โบโลน่า', description: 'ข้าวโพดหวานสลัดรสละมุน ตัดรสด้วยโบโลน่าพริกหรือธรรมดา', image: 'https://human-white-pdserlloro.edgeone.app/23.jpg' },
+                    { id: 5, name: 'คอร์นสลัด+ไข่ดาว', description: 'เมนูยอดฮิตสำหรับคนชอบความนุ่มนวล ข้าวโพดหวานและไข่ดาวทอด', image: 'https://human-white-pdserlloro.edgeone.app/24.jpg' }
+                ],
+                drink: [
+                    { id: 101, name: 'อเมริกาโน่', price: 35, description: 'กาแฟดำรสเข้มข้น หอมกรุ่น สดชื่นเย็นชื่นใจ', image: 'https://corresponding-ivory-q2zxljjfbp.edgeone.app/2.jpg' },
+                    { id: 102, name: 'อเมริกาโน่ส้ม', price: 35, description: 'กาแฟดำผสมน้ำส้ม สดชื่นลงตัว', image: 'https://corresponding-ivory-q2zxljjfbp.edgeone.app/3.jpg' },
+                    { id: 103, name: 'อเมริกาโน่น้ำผึ้งมะนาว', price: 35, description: 'ความเปรี้ยวหวานที่เข้ากับกาแฟเข้มๆ', image: 'https://corresponding-ivory-q2zxljjfbp.edgeone.app/4.jpg' },
+                    { id: 104, name: 'อเมริกาโน่น้ำมะพร้าว', price: 35, description: 'หอมหวานละมุนจากน้ำมะพร้าวแท้', image: 'https://corresponding-ivory-q2zxljjfbp.edgeone.app/5.jpg' },
+                    { id: 105, name: 'อเมริกาโน่คาราเมล', price: 35, description: 'กาแฟดำเพิ่มความหอมหวานจากคาราเมล', image: 'https://corresponding-ivory-q2zxljjfbp.edgeone.app/6.jpg' },
+                    { id: 106, name: 'เอสเพรสโซ่', price: 35, description: 'เข้มข้นถึงใจ สไตล์คอกาแฟ', image: 'https://corresponding-ivory-q2zxljjfbp.edgeone.app/7.jpg' },
+                    { id: 107, name: 'มอคค่า', price: 35, description: 'ส่วนผสมที่ลงตัวของกาแฟและโกโก้', image: 'https://corresponding-ivory-q2zxljjfbp.edgeone.app/8.jpg' },
+                    { id: 108, name: 'ลาเต้', price: 35, description: 'กาแฟรสนุ่มผสมนมสด', image: 'https://corresponding-ivory-q2zxljjfbp.edgeone.app/9.jpg' },
+                    { id: 110, name: 'คาปูชิโน่', price: 35, description: 'กาแฟฟองนุ่มละมุนลิ้น', image: 'https://corresponding-ivory-q2zxljjfbp.edgeone.app/11.jpg' },
+                    { id: 111, name: 'ชานมเย็น', price: 30, description: 'ชาไทยสีส้ม หอมมันสไตล์ไทยแท้', image: 'https://corresponding-ivory-q2zxljjfbp.edgeone.app/12.jpg' },
+                    { id: 112, name: 'ชาเขียวนม', price: 30, description: 'ชาเขียวคัดสรรอย่างดี หอมนุ่ม', image: 'https://corresponding-ivory-q2zxljjfbp.edgeone.app/13.jpg' },
+                    { id: 113, name: 'โกโก้เย็น', price: 30, description: 'โกโก้เข้มข้น หวานมันกำลังดี', image: 'https://corresponding-ivory-q2zxljjfbp.edgeone.app/14.jpg' },
+                    { id: 115, name: 'ชามมะนาว', price: 30, description: 'เปรี้ยวหวานสดชื่น ดับกระหาย', image: 'https://corresponding-ivory-q2zxljjfbp.edgeone.app/16.jpg' }
+                ]
+            };
+
+            const toggleExtra = (id) => {
+                setItemOptions(prev => ({
+                    ...prev,
+                    selectedExtras: prev.selectedExtras.includes(id) 
+                        ? prev.selectedExtras.filter(x => x !== id)
+                        : [...prev.selectedExtras, id]
+                }));
+            };
+
+            const addToCart = () => {
+                const basePrice = activeCategory === 'sandwich' ? (itemOptions.size === 'XL' ? 50 : 30) : selectedItem.price;
+                const extraPrice = activeCategory === 'sandwich' ? itemOptions.selectedExtras.length * 5 : 0;
+                const finalPrice = basePrice + extraPrice;
+                
+                const cartId = `${activeCategory}-${selectedItem.id}-${itemOptions.size}-${itemOptions.selectedExtras.join('')}`;
+                
+                setCart(prev => {
+                    const existing = prev.find(i => i.cartId === cartId);
+                    if (existing) return prev.map(i => i.cartId === cartId ? {...i, quantity: i.quantity + 1} : i);
+                    return [...prev, { ...selectedItem, cartId, quantity: 1, price: finalPrice, options: {...itemOptions}, category: activeCategory }];
+                });
+                
+                setItemOptions({ size: 'XL', selectedExtras: [] });
+                setView('menu');
+            };
+
+            const removeFromCart = (cid) => setCart(cart.filter(i => i.cartId !== cid));
+            const total = cart.reduce((s, i) => s + (i.price * i.quantity), 0);
+
+            const submitOrder = async () => {
+                if (!customerInfo.name) return alert("กรุณาระบุชื่อผู้สั่งด้วยครับ");
+                setLoading(true);
+
+                const orderDetails = cart.map(i => {
+                    const opt = i.category === 'sandwich' ? ` [${i.options.size}${i.options.selectedExtras.length > 0 ? '+พิเศษ' : ''}]` : '';
+                    return `• ${i.name}${opt} x ${i.quantity}`;
+                }).join('\n');
+
+                const msg = `🍴 *ออเดอร์ใหม่: ครัวคุณหลวง*\n👤 คุณ: ${customerInfo.name}\n🏢 ห้อง: ${customerInfo.roomNumber || '-'}\n\nรายการ:\n${orderDetails}\n\n💰 ยอดรวม: ${total} บาท\n📝 หมายเหตุ: ${customerInfo.note || '-'}`;
+
+                try {
+                    if (liff.isInClient()) {
+                        await liff.sendMessages([{ type: 'text', text: msg }]);
+                        liff.closeWindow();
+                    } else {
+                        setView('success');
+                    }
+                } catch (e) {
+                    alert("เกิดข้อผิดพลาดในการส่งข้อมูล");
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            return (
+                <div className="max-w-md mx-auto min-h-screen bg-gray-50 flex flex-col shadow-2xl relative">
+                    <header className="bg-orange-600 text-white p-6 rounded-b-[40px] shadow-lg sticky top-0 z-40">
+                        <div className="flex justify-between items-center">
+                            <div>
+                                <h1 className="text-3xl font-black">ครัวคุณหลวง</h1>
+                                <p className="text-xs opacity-80 font-light">แซนวิชไส้ทะลัก & เครื่องดื่มเย็น</p>
+                            </div>
+                            <div className="bg-white/20 p-3 rounded-2xl relative active:scale-90 transition-transform" onClick={() => setView('cart')}>
+                                <Icon name="cart" />
+                                {cart.length > 0 && <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] w-5 h-5 flex items-center justify-center rounded-full font-bold shadow-md">{cart.length}</span>}
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="p-4 flex-1">
+                        {view === 'menu' && (
+                            <div className="animate-pop">
+                                <div className="flex gap-2 mb-6 bg-gray-200 p-1.5 rounded-2xl">
+                                    <button 
+                                        onClick={() => setActiveCategory('sandwich')} 
+                                        className={`flex-1 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 category-tab ${activeCategory === 'sandwich' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500'}`}
+                                    >
+                                        <Icon name="utensils" size={18} /> แซนวิช
+                                    </button>
+                                    <button 
+                                        onClick={() => setActiveCategory('drink')} 
+                                        className={`flex-1 py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-2 category-tab ${activeCategory === 'drink' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500'}`}
+                                    >
+                                        <Icon name="coffee" size={18} /> เครื่องดื่ม
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-4 pb-20">
+                                    {menus[activeCategory].map(item => (
+                                        <div key={item.id} onClick={() => { setSelectedItem(item); setView('detail'); }} className="bg-white p-4 rounded-3xl shadow-sm flex gap-4 border border-gray-100 active:scale-95 transition-transform">
+                                            <div className="w-24 h-24 bg-orange-50 rounded-2xl flex items-center justify-center shadow-inner shrink-0 overflow-hidden text-3xl">
+                                                <img src={item.image} className="w-full h-full object-cover" onError={(e) => { e.target.style.display='none'; }}/>
+                                                {item.image.length < 5 && item.image}
+                                            </div>
+                                            <div className="flex-1 flex flex-col justify-between py-1">
+                                                <div>
+                                                    <h3 className="font-bold text-gray-800 leading-tight">{item.name}</h3>
+                                                    <p className="text-[10px] text-gray-400 mt-1 line-clamp-2 leading-relaxed">{item.description}</p>
+                                                </div>
+                                                <div className="flex justify-between items-center mt-2">
+                                                    <span className="text-orange-600 font-bold text-lg">{activeCategory === 'sandwich' ? '30-50.-' : `${item.price}.-`}</span>
+                                                    <span className="bg-orange-500 text-white p-1.5 rounded-xl shadow-md"><Icon name="plus" size={16}/></span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'detail' && selectedItem && (
+                            <div className="animate-pop pb-10">
+                                <button onClick={() => setView('menu')} className="flex items-center gap-2 text-gray-400 font-bold mb-6 hover:text-orange-500"><Icon name="chevronLeft" size={20}/> กลับไปหน้าเมนู</button>
+                                <div className="bg-white p-8 rounded-[40px] shadow-sm border border-gray-100 text-center">
+                                    <div className="w-48 h-48 mx-auto bg-orange-50 rounded-[40px] flex items-center justify-center shadow-inner overflow-hidden mb-8 text-7xl">
+                                        <img src={selectedItem.image} className="w-full h-full object-cover" onError={(e) => { e.target.style.display='none'; }}/>
+                                        {selectedItem.image.length < 5 && selectedItem.image}
+                                    </div>
+                                    <h2 className="text-2xl font-black mb-2 leading-tight text-gray-900">{selectedItem.name}</h2>
+                                    <p className="text-gray-400 text-sm mb-8 leading-relaxed px-4">{selectedItem.description}</p>
+
+                                    {activeCategory === 'sandwich' && (
+                                        <div className="text-left space-y-8">
+                                            <div>
+                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1 text-center">เลือกขนาด (Size)</p>
+                                                <div className="grid grid-cols-2 gap-3">
+                                                    {['S', 'XL'].map(s => (
+                                                        <button key={s} onClick={() => setItemOptions({...itemOptions, size: s})} className={`py-4 rounded-3xl border-2 font-bold transition-all ${itemOptions.size === s ? 'border-orange-500 bg-orange-50 text-orange-600' : 'border-gray-50 text-gray-300'}`}>Size {s} ({s === 'S' ? '30.-' : '50.-'})</button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 ml-1 text-center">เพิ่มไส้พิเศษ (ไส้ละ 5.-)</p>
+                                                <div className="grid grid-cols-1 gap-2">
+                                                    {extraOptions.map(opt => (
+                                                        <div key={opt.id} onClick={() => toggleExtra(opt.id)} className={`p-4 rounded-2xl border-2 flex justify-between items-center transition-all cursor-pointer ${itemOptions.selectedExtras.includes(opt.id) ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-gray-50 text-gray-400'}`}>
+                                                            <span className="font-bold text-sm">{opt.label}</span>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-[10px] font-bold">+5.-</span>
+                                                                {itemOptions.selectedExtras.includes(opt.id) && <Icon name="check" size={16} className="text-orange-500"/>}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+                                    <div className="mt-10 pt-6 border-t border-gray-50 flex items-center justify-between">
+                                        <div className="text-left">
+                                            <p className="text-[10px] font-black text-gray-300 uppercase leading-none mb-1">ราคาสุทธิ</p>
+                                            <p className="text-3xl font-black text-orange-600 leading-none">{(activeCategory === 'sandwich' ? (itemOptions.size === 'XL' ? 50 : 30) + (itemOptions.selectedExtras.length * 5) : selectedItem.price)}.-</p>
+                                        </div>
+                                        <button onClick={addToCart} className="bg-orange-600 text-white px-8 py-5 rounded-[24px] font-black text-lg shadow-xl active:scale-95 transition-all flex items-center gap-2"><Icon name="plus" size={20}/> เพิ่มลงตะกร้า</button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {view === 'cart' && (
+                            <div className="animate-pop space-y-6 pb-20">
+                                <h2 className="text-2xl font-black flex items-center gap-3 px-1"><Icon name="cart" size={28}/> ตะกร้าของฉัน</h2>
+                                {cart.length === 0 ? (
+                                    <div className="text-center py-20 bg-white rounded-[40px] border border-dashed border-gray-200">
+                                        <Icon name="cart" size={60} className="mx-auto mb-4 text-gray-200 opacity-50"/>
+                                        <p className="text-gray-400 font-medium">ยังไม่มีรายการในตะกร้า</p>
+                                        <button onClick={() => setView('menu')} className="mt-4 text-orange-600 font-bold bg-orange-50 px-6 py-2 rounded-full">ไปเลือกเมนูเลย</button>
+                                    </div>
+                                ) : (
+                                    <>
+                                        <div className="space-y-3">
+                                            {cart.map(i => (
+                                                <div key={i.cartId} className="bg-white p-4 rounded-3xl shadow-sm flex items-center justify-between border border-gray-50">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="w-16 h-16 bg-gray-50 rounded-2xl flex items-center justify-center shadow-inner overflow-hidden shrink-0 text-2xl">
+                                                            <img src={i.image} className="w-full h-full object-cover" onError={(e) => { e.target.style.display='none'; }}/>
+                                                            {i.image.length < 5 && i.image}
+                                                        </div>
+                                                        <div>
+                                                            <p className="font-bold text-sm leading-tight text-gray-800">{i.name}</p>
+                                                            <div className="flex gap-1 mt-1">
+                                                                <p className="text-[10px] text-orange-500 font-bold bg-orange-50 px-2 rounded-full">{i.price * i.quantity}.-</p>
+                                                                {i.options && <p className="text-[10px] text-gray-400 font-bold bg-gray-100 px-2 rounded-full">Size {i.options.size}</p>}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <button onClick={() => removeFromCart(i.cartId)} className="text-gray-300 p-2 hover:text-red-500 transition-colors"><Icon name="x" size={20}/></button>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        <div className="bg-white p-6 rounded-[32px] space-y-4 border border-orange-50 shadow-sm">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1">ชื่อผู้สั่ง</label>
+                                                <input value={customerInfo.name} onChange={e => setCustomerInfo({...customerInfo, name: e.target.value})} placeholder="ระบุชื่อของคุณ" className="w-full p-4 bg-gray-50 rounded-2xl outline-none focus:ring-2 focus:ring-orange-500 text-sm"/>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1">หมายเลขห้อง</label>
+                                                <div className="bg-gray-50 rounded-2xl flex items-center px-4">
+                                                    <Icon name="home" size={18} className="text-gray-300"/>
+                                                    <input value={customerInfo.roomNumber} onChange={e => setCustomerInfo({...customerInfo, roomNumber: e.target.value})} placeholder="ระบุห้อง (ถ้ามี)" className="bg-transparent p-4 flex-1 outline-none text-sm"/>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-gray-400 uppercase ml-1">หมายเหตุ</label>
+                                                <textarea value={customerInfo.note} onChange={e => setCustomerInfo({...customerInfo, note: e.target.value})} placeholder="เช่น หวานน้อย, แยกน้ำแข็ง..." className="w-full p-4 bg-gray-50 rounded-2xl h-20 outline-none text-sm focus:ring-2 focus:ring-orange-500"/>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-orange-600 text-white p-8 rounded-[40px] shadow-2xl shadow-orange-200">
+                                            <div className="flex justify-between items-end mb-6">
+                                                <div>
+                                                    <p className="text-[10px] uppercase font-black opacity-60 leading-none">ยอดรวมทั้งสิ้น</p>
+                                                    <p className="text-4xl font-black leading-none mt-1">{total}.-</p>
+                                                </div>
+                                                <p className="text-sm font-bold opacity-80">{cart.length} รายการ</p>
+                                            </div>
+                                            <button onClick={submitOrder} disabled={loading} className="w-full bg-white text-orange-600 py-5 rounded-[24px] font-black text-xl active:scale-95 transition-all shadow-lg flex items-center justify-center gap-3">{loading ? 'กำลังส่ง...' : <>ยืนยันสั่งซื้อ <Icon name="chevronRight" size={20}/></>}</button>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+
+                        {view === 'success' && (
+                            <div className="text-center py-20 animate-pop px-6">
+                                <div className="bg-green-100 text-green-500 w-24 h-24 rounded-[30px] flex items-center justify-center mx-auto mb-6 shadow-sm"><Icon name="check" size={48}/></div>
+                                <h2 className="text-3xl font-black mb-2 leading-tight text-gray-900">สั่งอาหารสำเร็จ!</h2>
+                                <p className="text-gray-400 text-sm mb-10 leading-relaxed font-medium">ขอบคุณที่ใช้บริการครัวคุณหลวงครับ<br/>รอรับการแจ้งเตือนจากเราทางแชทนะครับ 😊</p>
+                                <button onClick={() => setView('menu')} className="bg-orange-600 text-white px-10 py-4 rounded-full font-bold shadow-lg shadow-orange-100">สั่งเมนูอื่นเพิ่ม</button>
+                            </div>
+                        )}
+                    </main>
+
+                    {view === 'menu' && cart.length > 0 && (
+                        <div className="fixed bottom-6 left-4 right-4 z-50 animate-pop">
+                            <button onClick={() => setView('cart')} className="w-full bg-stone-900 text-white p-5 rounded-[30px] flex justify-between items-center shadow-2xl ring-8 ring-white/50 transform active:scale-95 transition-all">
+                                <div className="flex items-center gap-3">
+                                    <div className="bg-orange-500 w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm shadow-inner">{cart.length}</div>
+                                    <span className="font-bold text-lg">ดูตะกร้าสินค้า</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-2xl font-black text-orange-400">{total}.-</span>
+                                    <Icon name="chevronRight" size={20} className="text-gray-400" />
+                                </div>
+                            </button>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
 </body>
 </html>
